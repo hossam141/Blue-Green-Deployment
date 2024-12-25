@@ -131,7 +131,7 @@ pipeline {
             }
         }
 
-        stage('Deploy App to Kubernetes') {
+        stage('Deploy App Blue or Green to Kubernetes') {
             steps {
                 script {
                     def deploymentFile = ""
@@ -143,6 +143,39 @@ pipeline {
 
                     withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://F08C82B14DBE45B3B9F2078AFA728313.gr7.us-east-1.eks.amazonaws.com') {
                         sh "kubectl apply -f ${deploymentFile} -n ${KUBE_NAMESPACE}"
+                    }
+                }
+            }
+        }
+
+        stage('Switch Traffic Between Blue & Green Environment') {
+            when {
+                expression { return params.SWITCH_TRAFFIC }
+            }
+            steps {
+                script {
+                    def newEnv = params.DEPLOY_ENV
+
+                    // Always switch traffic based on DEPLOY_ENV
+                    withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://F08C82B14DBE45B3B9F2078AFA728313.gr7.us-east-1.eks.amazonaws.com') {
+                        sh '''
+                            kubectl patch service bankapp-service -p "{\\"spec\\": {\\"selector\\": {\\"app\\": \\"bankapp\\", \\"version\\": \\"''' + newEnv + '''\\"}}}" -n ${KUBE_NAMESPACE}
+                        '''
+                    }
+                    echo "Traffic has been switched to the ${newEnv} environment."
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    def verifyEnv = params.DEPLOY_ENV
+                    withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://F08C82B14DBE45B3B9F2078AFA728313.gr7.us-east-1.eks.amazonaws.com') {
+                        sh """
+                        kubectl get pods -l version=${verifyEnv} -n ${KUBE_NAMESPACE}
+                        kubectl get svc bankapp-service -n ${KUBE_NAMESPACE}
+                        """
                     }
                 }
             }
