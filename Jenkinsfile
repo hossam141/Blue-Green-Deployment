@@ -14,6 +14,7 @@ pipeline {
     environment {
         IMAGE_NAME = "hossamtaha18/bankapp"
         TAG = "${params.DOCKER_TAG}"
+        KUBE_NAMESPACE = 'webapps'
         SCANNER_HOME = tool 'sonnar-scanner'
     }
 
@@ -104,6 +105,28 @@ pipeline {
                     withDockerRegistry(credentialsId: 'docker-cred') {
                         sh "docker push ${IMAGE_NAME}:${TAG}"
                     }
+                }
+            }
+        }
+        stage('Deploy MySQL Deployment and Service') {
+            steps {
+                script {
+                    withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://F08C82B14DBE45B3B9F2078AFA728313.gr7.us-east-1.eks.amazonaws.com') {
+                        sh "kubectl apply -f mysql-ds.yml -n ${KUBE_NAMESPACE}"  // Ensure you have the MySQL deployment YAML ready
+                    }
+                }
+            }
+        }
+
+        stage('Deploy SVC-APP') {
+            steps {
+                script {
+                    withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://46743932FDE6B34C74566F392E30CABA.gr7.ap-south-1.eks.amazonaws.com') {
+                        sh """ if ! kubectl get svc bankapp-service -n ${KUBE_NAMESPACE}; then
+                                kubectl apply -f bankapp-service.yml -n ${KUBE_NAMESPACE}
+                              fi
+                        """
+                   }
                 }
             }
         }
